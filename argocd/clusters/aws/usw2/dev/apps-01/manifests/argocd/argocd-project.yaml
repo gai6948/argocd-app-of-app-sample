@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: aws-usw2-dev-apps-01-01
+  name: aws-usw2-dev-apps-01
 spec:
   description: Apps development cluster in us-west-2 region of AWS
   destinations:
