@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-usw2-dev-apps-01-aws-node-termination-handler
+spec:
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  destination:
+    name: aws-usw2-dev-apps-01
+    namespace: kube-system
+  source:
+    repoURL: "https://aws.github.io/eks-charts"
+    chart: aws-node-termination-handler
+    targetRevision: "0.18.5"
+    helm:
+      values: |
+        serviceAccount:
+          create: true
+          name: aws-node
+          annotations:
+            eks.amazonaws.com/role-arn: "arn:aws:iam:::role/node-termination-handler"

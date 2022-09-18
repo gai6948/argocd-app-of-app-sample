@@ -1,0 +1,75 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-usw2-dev-apps-01-ebs-csi-driver
+spec:
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  destination:
+    name: aws-usw2-dev-apps-01
+    namespace: kube-system
+  source:
+    repoURL: "https://kubernetes-sigs.github.io/aws-ebs-csi-driver"
+    chart: aws-ebs-csi-driver
+    targetRevision: "2.8.1"
+    helm:
+      values: |
+        sidecars:
+          provisioner:
+            logLevel: 2
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+          attacher:
+            logLevel: 2
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+          snapshotter:
+            logLevel: 2
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+          livenessProbe:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 50m
+                memory: 128Mi
+          resizer:
+            logLevel: 2
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+          nodeDriverRegistrar:
+            logLevel: 2
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi

@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus
+spec:
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  destination:
+    name: in-cluster
+    namespace: prometheus
+  source:
+    repoURL: "https://prometheus-community.github.io/helm-charts"
+    chart: kube-prometheus-stack
+    targetRevision: "39.7.0"
+    helm:
+      values: |
+        ## Create default rules for monitoring the cluster
+        ##
+        defaultRules:
+          create: true
+          rules:
+            alertmanager: true
+            etcd: false
+            general: true
+            k8s: true
+            kubeApiserver: true
+            kubeApiserverAvailability: true
+            kubeApiserverError: true
+            kubeApiserverSlos: true
+            kubelet: true
+            kubePrometheusGeneral: true
+            kubePrometheusNodeAlerting: true
+            kubePrometheusNodeRecording: true
+            kubernetesAbsent: true
+            kubernetesApps: true
+            kubernetesResources: true
+            kubernetesStorage: true
+            kubernetesSystem: true
+            kubeScheduler: false
+            kubeStateMetrics: true
+            network: true
+            node: true
+            prometheus: true
+            prometheusOperator: true
+            time: true

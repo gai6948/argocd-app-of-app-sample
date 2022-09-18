@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: onprem-hk-prod-ci-01-manifests
+  namespace: argocd
+spec:
+  destination:
+    name: in-cluster
+    namespace: argocd
+  source:
+    path: argocd/clusters/onprem/hk/prod/ci-01/manifest
+    repoURL: "git@github.com:XXXX"
+    targetRevision: HEAD
+    directory:
+      recurse: true
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

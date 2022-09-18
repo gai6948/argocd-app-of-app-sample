@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opentelemetry-agent
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: opentelemetry-agent
+  namespace: opentelemetry-agent
+spec:
+  endpoints:
+    - interval: 30s
+      path: /metrics
+      port: "monitoring"
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: opentelemetry-collector
+      app.kubernetes.io/name: otel-agent-collector-monitoring
+---
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-agent
+  namespace: opentelemetry-agent
+spec:
+  mode: daemonset
+  image: otel/opentelemetry-collector-contrib:0.46.0
+  hostNetwork: true
+  tolerations:
+    - operator: Equal
+      key: "role"
+      value: "control-plane"
+      effect: "NoSchedule"
+  resources:
+    limits:
+      cpu: 125m
+      memory: 64Mi
+    requests:
+      cpu: 125m
+      memory: 64Mi
+  ports:
+    - name: monitoring
+      protocol: TCP
+      port: 8888
+      targetPort: 8888
+    - name: otlp-grpc
+      protocol: TCP
+      port: 4317
+      targetPort: 4317
+  env:
+    - name: POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    # This is picked up by the resource detector
+    - name: OTEL_RESOURCE
+      value: "k8s.pod.ip=$(POD_IP)"
+  config: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+    processors:
+      # The k8sattributes in the Agent is in passthrough mode
+      # so that it only tags with the minimal info for the
+      # agent k8sattributes to complete
+      k8sattributes:
+        passthrough: true
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 70
+        spike_limit_percentage: 20
+    extensions:
+      health_check:
+      memory_ballast:
+        size_in_percentage: 50
+    exporters:
+      otlp:
+        endpoint: "otel-collector-collector.opentelemetry-collector.svc.cluster.local:4317"
+        tls:
+          insecure: true      
+      logging:
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes]
+          exporters: [otlp, logging]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opentelemetry-agent-role
+rules:
+  - verbs:
+      - get
+      - list
+      - watch
+    apiGroups:
+      - ""
+    resources:
+      - pods
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opentelemetry-agent
+subjects:
+  - kind: ServiceAccount
+    name: otel-agent-collector
+    namespace: opentelemetry-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opentelemetry-agent-role

@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: aws-usw2-dev-apps-01-01
+spec:
+  description: Apps development cluster in us-west-2 region of AWS
+  destinations:
+    - name: aws-usw2-dev-apps-01
+      server: https://XXX.gr7.us-west-2.eks.amazonaws.com
+      namespace: "*"
+  sourceRepos:
+    - "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceBlacklist: []

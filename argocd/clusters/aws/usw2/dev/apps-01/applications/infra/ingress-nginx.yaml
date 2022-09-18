@@ -1,0 +1,248 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-usw2-dev-apps-01-ingress-nginx
+spec:
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  destination:
+    name: aws-usw2-dev-apps-01
+    namespace: ingress-nginx
+  source:
+    repoURL: "https://kubernetes.github.io/ingress-nginx"
+    chart: ingress-nginx
+    targetRevision: "4.2.0"
+    helm:
+      values: |
+        controller:
+          # Will add custom configuration options to Nginx https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/configmap/
+          config:
+            large-client-header-buffers: 4 256k
+            http2-max-header-size: 256k
+            http2-max-field-size: 256k
+            log-format-escape-json: true
+            log-format-upstream: '
+              {
+              "msec": "$msec",
+              "connection": "$connection",
+              "connection_requests": "$connection_requests",
+              "pid": "$pid",
+              "request_id": "$request_id",
+              "request_length": "$request_length",
+              "remote_addr": "$remote_addr",
+              "remote_user": "$remote_user",
+              "remote_port": "$remote_port",
+              "time_local": "$time_local",
+              "time_iso8601": "$time_iso8601",
+              "request": "$request",
+              "request_uri": "$request_uri",
+              "args": "$args",
+              "status": "$status",
+              "body_bytes_sent": "$body_bytes_sent",
+              "bytes_sent": "$bytes_sent",
+              "http_referer": "$http_referer",
+              "http_user_agent": "$http_user_agent",
+              "http_x_forwarded_for": "$http_x_forwarded_for",
+              "http_host": "$http_host",
+              "server_name": "$server_name",
+              "request_time": "$request_time",
+              "upstream": "$upstream_addr",
+              "upstream_connect_time": "$upstream_connect_time",
+              "upstream_header_time": "$upstream_header_time",
+              "upstream_response_time": "$upstream_response_time",
+              "upstream_response_length": "$upstream_response_length",
+              "upstream_cache_status": "$upstream_cache_status",
+              "ssl_protocol": "$ssl_protocol",
+              "ssl_cipher": "$ssl_cipher",
+              "scheme": "$scheme",
+              "request_method": "$request_method",
+              "server_protocol": "$server_protocol",
+              "pipe": "$pipe",
+              "gzip_ratio": "$gzip_ratio",
+              "http_cf_ray": "$http_cf_ray",
+              "geoip_country_code": "$geoip_country_code"
+              }'
+
+          ingressClassResource:
+            name: nginx
+            enabled: true
+            default: true
+            controllerValue: "k8s.io/ingress-nginx"
+
+          ## See https://kubernetes.io/docs/tasks/administer-cluster/sysctl-cluster/ for
+          ## notes on enabling and using sysctls
+          ###
+          # sysctls:
+          #   "net.core.somaxconn": "8192"
+
+          updateStrategy:
+            rollingUpdate:
+              maxUnavailable: 1
+            type: RollingUpdate
+
+          affinity:
+            # # An example of required pod anti-affinity
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: app.kubernetes.io/name
+                        operator: In
+                        values:
+                          - ingress-nginx
+                      - key: app.kubernetes.io/instance
+                        operator: In
+                        values:
+                          - ingress-nginx
+                      - key: app.kubernetes.io/component
+                        operator: In
+                        values:
+                          - controller
+                  topologyKey: "kubernetes.io/hostname"
+
+          podAnnotations:
+            io.cilium.proxy-visibility: "<Egress/53/UDP/DNS>,<Ingress/80/TCP/HTTP>"
+
+          replicaCount: 2
+
+          minAvailable: 1
+
+          resources:
+            limits:
+              cpu: 250m
+              memory: 256Mi
+            requests:
+              cpu: 250m
+              memory: 256Mi
+
+          # Mutually exclusive with keda autoscaling
+          autoscaling:
+            enabled: false
+
+          # Mutually exclusive with hpa autoscaling
+          keda:
+            apiVersion: "keda.sh/v1alpha1"
+            enabled: false
+            minReplicas: 2
+            maxReplicas: 5
+            pollingInterval: 30
+            cooldownPeriod: 300
+            restoreToOriginalReplicaCount: false
+            scaledObject:
+              annotations: {}
+              # Custom annotations for ScaledObject resource
+              #  annotations:
+              # key: value
+            triggers:
+              - type: prometheus
+                metadata:
+                  serverAddress: http://kube-prometheus-kube-prome-prometheus.prometheus:9090
+                  metricName: nginx_cpu_threshold
+                  threshold: "0.7"
+                  query: avg(sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace="ingress-nginx"}) by (pod) / sum(cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits{namespace="ingress-nginx"}) by (pod))
+              - type: prometheus
+                metadata:
+                  serverAddress: http://kube-prometheus-kube-prome-prometheus.prometheus:9090
+                  metricName: nginx_requests_total
+                  threshold: "1000"
+                  query: sum(rate(nginx_ingress_controller_requests[1m]))
+
+          # TODO: Investigate why accessing the NLB from outside VPC does not work
+          service:
+            enabled: true
+            annotations:
+              service.beta.kubernetes.io/aws-load-balancer-type: external
+              service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+              service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+              service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+              service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: TCP
+
+            ## Set external traffic policy to: "Local" to preserve source IP on providers supporting it.
+            ## Ref: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-typeloadbalancer
+            externalTrafficPolicy: "Local"
+
+            ## Enables an additional internal load balancer (besides the external one).
+            ## Annotations are mandatory for the load balancer to come up. Varies with the cloud service.
+            internal:
+              enabled: false
+
+          admissionWebhooks:
+            enabled: false
+
+            createSecretJob:
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+
+            patchWebhookJob:
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+
+            patch:
+              enabled: true
+              podAnnotations:
+                io.cilium.proxy-visibility: "<Egress/53/UDP/DNS>,<Egress/80/TCP/HTTP>"
+              nodeSelector:
+                kubernetes.io/os: linux
+
+          metrics:
+            enabled: true
+
+            serviceMonitor:
+              enabled: true
+
+            prometheusRule:
+              enabled: true
+              rules:
+                # # These are just examples rules, please adapt them to your needs
+                - alert: NGINXConfigFailed
+                  expr: count(nginx_ingress_controller_config_last_reload_successful == 0) > 0
+                  for: 1s
+                  labels:
+                    severity: critical
+                  annotations:
+                    description: bad ingress config - nginx config test failed
+                    summary: uninstall the latest ingress changes to allow config reloads to resume
+                - alert: NGINXCertificateExpiry
+                  expr: (avg(nginx_ingress_controller_ssl_expire_time_seconds) by (host) - time()) < 604800
+                  for: 1s
+                  labels:
+                    severity: critical
+                  annotations:
+                    description: ssl certificate(s) will expire in less then a week
+                    summary: renew expiring certificates to avoid downtime
+                - alert: NGINXTooMany500s
+                  expr: sum(increase(nginx_ingress_controller_requests{status=~"5.*"}[5m])) > 5
+                  for: 1m
+                  labels:
+                    severity: warning
+                  annotations:
+                    description: Too many 5XXs
+                    summary: 500 errors have increased by more than 5% in last 5 minutes, this requires your attention
+                - alert: NGINXTooMany400s
+                  expr: sum(increase(nginx_ingress_controller_requests{status=~"4.*"}[5m])) > 5
+                  for: 1m
+                  labels:
+                    severity: info
+                  annotations:
+                    description: Too many 4XXs
+                    summary: 400 errors have increased by more than 5% in last 5 minutes, this requires your attention
+
+        ## Default 404 backend
+        ##
+        defaultBackend:
+          enabled: false

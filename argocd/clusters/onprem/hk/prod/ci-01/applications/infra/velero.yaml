@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: velero
+spec:
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+  destination:
+    name: in-cluster
+    namespace: velero
+  source:
+    repoURL: "https://vmware-tanzu.github.io/helm-charts"
+    chart: velero
+    targetRevision: "2.29.4"
+    helm:
+      values: |
+        podAnnotations:
+           io.cilium.proxy-visibility: "<Egress/53/UDP/DNS>,<Egress/80/TCP/HTTP>,<Ingress/8085/TCP/HTTP>"

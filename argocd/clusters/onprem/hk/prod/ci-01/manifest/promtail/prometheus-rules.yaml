@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: promtail
+  namespace: loki
+spec:
+  groups:
+    - name: promtail
+      rules:
+        - alert: PromtailInstanceMissing
+          annotations:
+            componentType: promtail
+            description: >-
+              Promtail pod '{{ $labels.pod }}' has not been sending any bytes in last 5 minutes
+            summary: >-
+              Promtail pod not sending bytes to Loki
+            pod: "{{ $labels.pod }}"
+          expr: >-
+            sum(rate(promtail_sent_bytes_total[1m])) by (pod) < 1
+          for: 5m
+          labels:
+            severity: critical
